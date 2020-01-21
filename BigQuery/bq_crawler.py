@@ -8,7 +8,7 @@ parser = argparse.ArgumentParser(description='BQ Schema Extractor utils')
 parser.add_argument('project', type=str, help='The project that contains the BigQuery')
 parser.add_argument('operation_mode', type=str, help='CSV or DDL operation')
 parser.add_argument('file_path', type=str, help='Output dir for file')
-parser.add_argument('count_incr', type=int, default=10, help='Log out every x tables. Choose an integer to use as a divisor', )
+parser.add_argument('count_incr', type=int, default=10, help='Log out every x tables. Choose an integer to use as a divisor')
 args = parser.parse_args()
 project = args.project
 file_path = args.file_path
@@ -40,6 +40,9 @@ def get_table_details(dataset_tablename):
     subfields_list = list()
     for i in table_schema:
         subfields_list.append(i.fields)
+    modes_list = list()
+    for i in table_schema:
+        modes_list.append(i.mode)
     table_doc['table_name'] = dataset_tablename
     table_doc['full_table_id'] = table.full_table_id
     table_doc['friendly_name'] = table.friendly_name
@@ -69,6 +72,7 @@ def get_table_details(dataset_tablename):
     table_doc['column_type_list'] = type_list
     table_doc['nullable_list'] = nullable_list
     table_doc['subfields_list'] = subfields_list
+    table_doc['modes_list'] = modes_list
     return table_doc
 
 
@@ -110,8 +114,8 @@ def write_ddl(all_table_details):
     """
     Generate CREATE TABLE DDL
     @todo:
-    Support for ARRAY data type
-    Support for STRUCT more than 1 level
+    Support for ARRAY data type more than 1 nested level
+    Support for STRUCT more than 1 nested level
     Support for PARTITION BY TIMESTAMP and INGESTION TIME
     Support for PARTITION BY INTEGER RANGE
     Support for OPTIONS
@@ -132,8 +136,13 @@ def write_ddl(all_table_details):
     record_token = "RECORD"
     struct_token_open = "STRUCT< "
     struct_token_close = " >"
+    repeated_token = "REPEATED"
+    array_token_open = "ARRAY< "
+    array_token_close=" >"
     not_nullable_token = " NOT NULL"
     partition_by_token = " PARTITION BY "
+    clustered_by_token=" CLUSTER BY "
+
     with open(file_path, 'w') as output_file:
         for table in all_table_details:
             output_file.write(create_table_token_open)
@@ -147,6 +156,20 @@ def write_ddl(all_table_details):
                     output_file.write(integer_token_write)
                 elif (table['column_type_list'][counter] == float_token_read):
                     output_file.write(float_token_write)
+                elif (table['column_type_list'][counter] == record_token and table['modes_list'][counter] == repeated_token):
+                        #Array type
+                    output_file.write(array_token_open)
+                    counter_2 = 0
+                    for subfield in table['subfields_list'][counter]:
+                        output_file.write(subfield.name)
+                        output_file.write(blank_space)
+                        output_file.write(subfield.field_type)
+                        if(not subfield.is_nullable):
+                            output_file.write(not_nullable_token)
+                        if (( counter_2 +1 ) != len( table['subfields_list'][counter] ) ):
+                            output_file.write(values_separator)
+                        counter_2 += 1
+                    output_file.write(array_token_close)
                 elif (table['column_type_list'][counter] == record_token):
                     output_file.write(struct_token_open)
                     counter_2 = 0
@@ -168,9 +191,19 @@ def write_ddl(all_table_details):
                     output_file.write(values_separator)
                 counter += 1
             output_file.write(create_table_token_close)
+            ##Partitioning
             if (table['time_partitioning'] is not None and table['time_partitioning'].field is not None):
                 output_file.write(partition_by_token)
                 output_file.write(table['time_partitioning'].field)
+            ##Clustering
+            if (table['clustering_fields'] is not None):
+                output_file.write(clustered_by_token)
+                counter_3 = 0
+                for field in table['clustering_fields']:
+                    output_file.write(field)
+                    if (( counter_3 +1 ) != len( table['clustering_fields'] ) ):
+                        output_file.write(values_separator)
+                    counter_3 += 1
             output_file.write(new_line)
     print('File saved to:', file_path)
 
