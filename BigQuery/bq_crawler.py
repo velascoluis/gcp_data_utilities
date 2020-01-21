@@ -64,6 +64,13 @@ def get_table_details(dataset_tablename):
     table_doc['modified'] = table.modified.isoformat()
     table_doc['table_type'] = table.table_type
     table_doc['table_path'] = table.path
+    table_doc['view_query'] = table.view_query
+    ## table options
+    table_doc['expires'] = table.expires
+    table_doc['partition_expiration'] = table.partition_expiration
+    table_doc['description'] = table.description
+    table_doc['friendly_name'] = table.friendly_name
+    ##
     table_doc['range_partitioning'] = table.range_partitioning
     table_doc['partitioning_type'] = table.partitioning_type
     table_doc['time_partitioning'] = table.time_partitioning
@@ -119,7 +126,13 @@ def write_ddl(all_table_details):
     Support for PARTITION BY TIMESTAMP and INGESTION TIME
     Support for PARTITION BY INTEGER RANGE
     Support for OPTIONS
-    Support for AS
+        expiration_timestamp
+        partition_expiration_days
+        require_partition_filter
+        kms_key_name
+        friendly_name
+        description
+        labels
     Support for VIEWS
     """
     #TOKENS
@@ -142,6 +155,9 @@ def write_ddl(all_table_details):
     not_nullable_token = " NOT NULL"
     partition_by_token = " PARTITION BY "
     clustered_by_token=" CLUSTER BY "
+    options_token_open=" OPTIONS( "
+    options_token_close= " )"
+    as_token = " AS "
 
     with open(file_path, 'w') as output_file:
         for table in all_table_details:
@@ -204,6 +220,14 @@ def write_ddl(all_table_details):
                     if (( counter_3 +1 ) != len( table['clustering_fields'] ) ):
                         output_file.write(values_separator)
                     counter_3 += 1
+            #options
+            if (table['expires']  is not None or table['partition_expiration'] is not None or table['description'] is not None or table['friendly_name'] is not None ):
+                output_file.write(options_token_open)
+                output_file.write(options_token_close)
+            #AS ...
+            if (table['view_query'] is not None):
+                output_file.write(as_token)
+                output_file.write(table['view_query'])
             output_file.write(new_line)
     print('File saved to:', file_path)
 
